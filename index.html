@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eRlg1AuVOimIl+tLD74Vbl/14RfoRx2YASLX0KQ552U=' 'sha256-3EG4vmp7j3z59/ZtzW36otpgoeEjITl/v8cYL/wVc2A='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com blob: data:; img-src 'self' blob: data:; connect-src 'self' blob: data:; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-YlOJZqC9X6PAPCOdCpyCyB+JPbtxitCmylg43IqmxRA=' 'sha256-3EG4vmp7j3z59/ZtzW36otpgoeEjITl/v8cYL/wVc2A='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com blob: data:; img-src 'self' blob: data:; connect-src 'self' blob: data:; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1201,7 +1201,7 @@ async function importFiles(files) {
 /* =========================================================================
    Lesemodus
    ========================================================================= */
-const R = { book: null, rec: null, i: 0, page: 0, pages: 1, step: 0, shadow: null, flow: null, busy: false, uiTimer: 0, total: 0, wake: null };
+const R = { book: null, rec: null, i: 0, page: 0, pages: 1, step: 0, shadow: null, flow: null, busy: false, uiTimer: 0, total: 0, wake: null, userNav: false };
 const reader = $('#reader'), host = $('#host');
 R.shadow = host.attachShadow({ mode: 'open' });
 
@@ -1292,6 +1292,7 @@ async function openReader(id) {
   }
 }
 function closeReader() {
+  R.userNav = false;
   savePos(true);
   reader.hidden = true; document.body.style.overflow = '';
   closeSheets();
@@ -1447,9 +1448,11 @@ function savePos(now) {
   if (!R.book || !R.rec) return;
   const pos = { i: R.i, f: chapterFrac(), total: totalFrac() };
   const old = R.rec.pos;
-  // Zeitstempel nur bei echter Bewegung erneuern, sonst ueberstimmt ein blosses Schliessen neuere Staende anderer Geraete
+  // Zeitstempel nur, wenn DU geblaettert/gesprungen bist. Oeffnen, Schliessen oder Schriftwechsel zaehlen nicht,
+  // sonst wuerde z. B. das blosse Oeffnen auf dem iPhone den echten Stand vom iPad ueberstimmen.
   const moved = !old || old.i !== pos.i || Math.abs((old.f || 0) - pos.f) > 1e-4;
-  const posTime = moved ? Date.now() : (R.rec.posTime || Date.now());
+  const posTime = moved && R.userNav ? Date.now() : (R.rec.posTime || 0);
+  if (S.mode !== 'scroll') R.userNav = false;
   R.rec.pos = pos; R.rec.posTime = posTime;
   clearTimeout(saveT);
   const doSave = () => { if (R.rec.id === 'sample') store('bf:samplePos', pos); else DB.patch(R.rec.id, { pos, posTime }); };
@@ -1457,6 +1460,7 @@ function savePos(now) {
 }
 async function next() {
   if (R.busy || !R.book) return;
+  R.userNav = true;
   if (S.mode === 'scroll') {
     const max = host.scrollHeight - host.clientHeight;
     if (host.scrollTop < max - 4) { host.scrollBy({ top: host.clientHeight * .9, behavior: 'smooth' }); return; }
@@ -1469,6 +1473,7 @@ async function next() {
 }
 async function prev() {
   if (R.busy || !R.book) return;
+  R.userNav = true;
   if (S.mode === 'scroll') {
     if (host.scrollTop > 4) { host.scrollBy({ top: -host.clientHeight * .9, behavior: 'smooth' }); return; }
     if (R.i > 0) await showChapter(R.i - 1, { last: true });
@@ -1478,6 +1483,7 @@ async function prev() {
   else if (R.i > 0) await showChapter(R.i - 1, { last: true });
 }
 async function goHref(href) {
+  R.userNav = true;
   const loc = R.book.locate(href);
   if (loc.i < 0) return;
   closeSheets();
@@ -1518,6 +1524,7 @@ $('#page').addEventListener('click', e => {
   else if (x > 0.72) { next(); showUi(false); }
   else showUi(!reader.classList.contains('ui'));
 });
+['touchstart', 'wheel', 'keydown'].forEach(ev => host.addEventListener(ev, () => { if (S.mode === 'scroll') R.userNav = true; }, { passive: true }));
 host.addEventListener('scroll', () => { if (S.mode === 'scroll') { updateStatus(); savePos(); } }, { passive: true });
 document.addEventListener('keydown', e => {
   if (reader.hidden || e.target.matches('input, select, textarea')) return;
@@ -1532,6 +1539,7 @@ slider.addEventListener('input', () => {
   $('#r-pct').textContent = Math.round(slider.value / 10) + ' %';
 });
 slider.addEventListener('change', async () => {
+  R.userNav = true;
   slider.dragging = false;
   const target = slider.value / 1000 * R.total;
   let acc = 0, i = 0;
@@ -1622,10 +1630,29 @@ const dataUrlToBlob = async d => (await fetch(d)).blob();
 const fmtTime = t => t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '–';
 const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
 
+// Entscheidet, ob ein Stand aus der Datei den Stand auf diesem Geraet ersetzt.
+// Rueckgabe: true = uebernehmen, false = hier ist es gleich/weiter, 'conflict' = hier wurde spaeter gelesen.
+function incomingWins(local, e) {
+  if (!e || !e.pos) return false;
+  const lp = local.pos, lt = local.posTime || 0, et = e.posTime || 0;
+  const lTot = lp ? lp.total || 0 : 0, eTot = e.pos.total || 0;
+  if (!lp) return true;                                    // hier noch nie gelesen
+  if (lp.i === e.pos.i && Math.abs((lp.f || 0) - (e.pos.f || 0)) < 1e-4) return false;   // identisch
+  if (lTot < 0.005 && eTot > lTot) return true;            // hier nur geoeffnet, dort weiter
+  if (et > lt) return true;                                // dort zuletzt gelesen
+  if (!et && !lt) return eTot > lTot;                      // beide ohne Zeitstempel (vor dem Update): weiterer Stand
+  return 'conflict';
+}
+function takeIncoming(local, e) {
+  local.pos = e.pos; local.posTime = Math.max(e.posTime || 0, local.posTime || 0, 1);
+  local.opened = Math.max(local.opened || 0, e.opened || 0, e.posTime || 0, Date.now() - 1000);
+  return DB.patch(local.id, { pos: local.pos, posTime: local.posTime, opened: local.opened });
+}
+let lastIncoming = new Map();
 function applyPending(rec) {
   const pend = store('bf:pending') || {};
   const p = pend[rec.key];
-  if (p && (p.posTime || 0) > (rec.posTime || 0)) { rec.pos = p.pos; rec.posTime = p.posTime; rec.opened = p.opened || p.posTime; }
+  if (p && incomingWins(rec, p) === true) { rec.pos = p.pos; rec.posTime = p.posTime || 0; rec.opened = p.opened || p.posTime || Date.now(); }
   if (p) { delete pend[rec.key]; store('bf:pending', pend); }
 }
 async function buildSyncFile(withBooks) {
@@ -1696,12 +1723,18 @@ async function importSync(file) {
   let data;
   try { data = JSON.parse(await file.text()); } catch (e) { toast('Die Datei ist keine Bücherfach-Sicherung.'); return; }
   if (!data || data.app !== 'buecherfach' || !Array.isArray(data.books)) { toast('Die Datei ist keine Bücherfach-Sicherung.'); return; }
-  let updated = 0, added = 0; const missing = []; const errors = [];
+  let updated = 0, added = 0; const missing = []; const errors = []; const conflicts = [];
+  lastIncoming = new Map();
   const pend = store('bf:pending') || {};
   const changedIds = new Set();
   for (const e of data.books) {
     if (!e || !e.key) continue;
-    let local = books.find(b => b.key === e.key) || books.find(b => b.title === e.title && (b.author || '') === (e.author || '') && b.size === e.size);
+    const norm = t => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    let local = books.find(b => b.key === e.key) || books.find(b => norm(b.title) === norm(e.title) && norm(b.author) === norm(e.author) && b.size === e.size);
+    if (!local) {   // andere Datei desselben Buches (z. B. anderer Download): nur wenn eindeutig
+      const same = books.filter(b => norm(b.title) === norm(e.title) && norm(b.author) === norm(e.author));
+      if (same.length === 1) local = same[0];
+    }
     if (!local && e.file) {
       try {
         const blob = await dataUrlToBlob(e.file);
@@ -1711,14 +1744,12 @@ async function importSync(file) {
       } catch (err) { errors.push(e.title); continue; }
     }
     if (!local) {
-      if (e.pos && (!pend[e.key] || (pend[e.key].posTime || 0) < (e.posTime || 0))) pend[e.key] = { pos: e.pos, posTime: e.posTime || 0, opened: e.opened || 0, title: e.title, author: e.author || '' };
+      if (e.pos && (!pend[e.key] || incomingWins(pend[e.key], e) !== false)) pend[e.key] = { pos: e.pos, posTime: e.posTime || 0, opened: e.opened || 0, title: e.title, author: e.author || '' };
       missing.push(e.title); continue;
     }
-    if ((e.posTime || 0) > (local.posTime || 0) && e.pos) {
-      local.pos = e.pos; local.posTime = e.posTime; local.opened = Math.max(local.opened || 0, e.opened || 0, e.posTime || 0);
-      await DB.patch(local.id, { pos: local.pos, posTime: local.posTime, opened: local.opened });
-      updated++; changedIds.add(local.id);
-    }
+    const verdict = incomingWins(local, e);
+    if (verdict === true) { await takeIncoming(local, e); updated++; changedIds.add(local.id); }
+    else if (verdict === 'conflict') { conflicts.push({ local, e }); lastIncoming.set(local.id, e); }
   }
   store('bf:pending', pend);
   let settingsChanged = false;
@@ -1734,20 +1765,37 @@ async function importSync(file) {
   if (!reader.hidden && R.rec && changedIds.has(R.rec.id)) { const p = R.rec.pos; await showChapter(Math.min(p.i, R.book.spine.length - 1), { frac: p.f }); }
   else if (!reader.hidden && settingsChanged) applySettings();
   const parts = [];
-  if (updated || (!added && !settingsChanged)) parts.push(updated === 1 ? '1 Lesestand aktualisiert' : updated ? updated + ' Lesestände aktualisiert' : 'alles war schon aktuell');
+  if (updated || (!added && !settingsChanged && !conflicts.length)) parts.push(updated === 1 ? '1 Lesestand aktualisiert' : updated ? updated + ' Lesestände aktualisiert' : 'alles war schon aktuell');
   if (added) parts.push(added === 1 ? '1 Buch hinzugefügt' : added + ' Bücher hinzugefügt');
   if (settingsChanged) parts.push('Darstellung übernommen');
   const latest = books.filter(b => b.posTime).sort((a, b) => b.posTime - a.posTime)[0];
+  if (!parts.length && conflicts.length) parts.push(conflicts.length === 1 ? 'ein Buch braucht deine Entscheidung' : conflicts.length + ' Bücher brauchen deine Entscheidung');
   let html = '<div class="notice"><span><b>Stand geladen:</b> ' + esc(parts.join(', ')) + '.';
   if (missing.length) html += '<br>Fehlt auf diesem Gerät (Stand wird übernommen, sobald du das Buch hinzufügst): ' + missing.map(t => '„' + esc(t) + '“').join(', ') + '.';
   if (errors.length) html += '<br>Nicht übernommen: ' + errors.map(esc).join(', ') + '.';
+  for (const c of conflicts) {
+    const pct = p => (((p && p.total) || 0) * 100).toFixed(1).replace('.', ',') + ' %';
+    html += '<br>„' + esc(c.local.title) + '“ wurde auf diesem Gerät später gelesen (hier ' + pct(c.local.pos) + ', in der Datei ' + pct(c.e.pos) + '). '
+      + '<button class="btn" type="button" data-force="' + esc(c.local.id) + '">Stand aus der Datei übernehmen</button>';
+  }
   if (latest && reader.hidden) html += '<br><button class="btn primary" type="button" data-continue="' + esc(latest.id) + '">Weiterlesen: ' + esc(latest.title) + '</button>';
   html += '</span><button class="x" type="button" aria-label="Schließen" data-dismiss>✕</button></div>';
   $('#notices').insertAdjacentHTML('afterbegin', html);
   if (!reader.hidden) toast(parts.join(', '));
   window.scrollTo(0, 0);
 }
-$('#notices').addEventListener('click', e => { const c = e.target.closest('[data-continue]'); if (c) { c.closest('.notice').remove(); openReader(c.dataset.continue); } });
+$('#notices').addEventListener('click', async e => {
+  const c = e.target.closest('[data-continue]');
+  if (c) { c.closest('.notice').remove(); openReader(c.dataset.continue); return; }
+  const f = e.target.closest('[data-force]');
+  if (f) {
+    const local = books.find(b => b.id === f.dataset.force), inc = lastIncoming.get(f.dataset.force);
+    if (!local || !inc) return;
+    await takeIncoming(local, inc);
+    f.replaceWith(Object.assign(document.createElement('b'), { textContent: 'übernommen ✓' }));
+    renderLibrary(); toast('Stand für „' + local.title + '“ übernommen');
+  }
+});
 
 /* ---- Start ---- */
 syncSettingsUi();
