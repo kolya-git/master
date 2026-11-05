@@ -1,0 +1,16 @@
+{
+  "name": "Bücherfach",
+  "short_name": "Bücherfach",
+  "description": "E-Book-Reader für EPUB, MOBI, FB2 und TXT",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F1F2EC",
+  "theme_color": "#F1F2EC",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
