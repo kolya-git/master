@@ -2,11 +2,13 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eRlg1AuVOimIl+tLD74Vbl/14RfoRx2YASLX0KQ552U=' 'sha256-3EG4vmp7j3z59/ZtzW36otpgoeEjITl/v8cYL/wVc2A='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com blob: data:; img-src 'self' blob: data:; connect-src 'self' blob: data:; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="referrer" content="no-referrer">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Bücherfach</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -203,7 +205,34 @@ button { cursor: pointer; }
 .range { width: 100%; accent-color: var(--accent); }
 .hint { font-size: .8rem; color: var(--muted); line-height: 1.4; margin: 0; }
 @media (prefers-reduced-motion: reduce) { .r-bar { transition: none; } }
-@media (max-width: 520px) { .search { width: 100%; } .tools { width: 100%; } .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 22px 14px; } }
+.sync-scrim { position: fixed; inset: 0; z-index: 49; background: rgba(0,0,0,.32); }
+.sync-sheet {
+  position: fixed; z-index: 50; left: 50%; transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top, 0px) + 56px); width: min(460px, calc(100% - 24px));
+  max-height: calc(100% - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 80px); overflow: auto;
+  background: var(--surface); color: var(--ink); border-radius: 16px; box-shadow: 0 14px 50px rgba(0,0,0,.3);
+  padding: 18px; font-family: var(--ui); display: grid; gap: 14px;
+}
+.sync-sheet h2 { font-family: var(--display); font-size: 1.25rem; margin: 0; display: flex; justify-content: space-between; align-items: center; }
+.sync-sheet .x { background: none; border: 0; font-size: 1.2rem; color: var(--muted); padding: 4px 8px; }
+.sync-step { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+.sync-step b { font-size: 1rem; }
+.sync-step .btn { justify-content: center; }
+.sync-step p, .sync-sheet > p { margin: 0; font-size: .88rem; color: var(--muted); line-height: 1.45; }
+.sync-check { display: flex; gap: 10px; align-items: flex-start; font-size: .92rem; line-height: 1.35; }
+.sync-check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; margin-top: 1px; }
+.sync-last { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.notice .btn { padding: 6px 12px; font-size: .9rem; margin-top: 8px; }
+@media (max-width: 520px) {
+  .search { width: 100%; } .tools { width: 100%; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 22px 14px; }
+  .brand h1 { font-size: 1.5rem; }
+  .lib-head { position: static; }
+  .select { flex: 1; min-width: 0; }
+  .sheet.panel { left: 8px; right: 8px; width: auto; top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); max-height: 72%; }
+  .sync-sheet { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); }
+  .r-title { font-size: .95rem; }
+}
 </style>
 </head>
 <body>
@@ -223,6 +252,10 @@ button { cursor: pointer; }
       <button class="btn primary" id="add-btn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         Bücher hinzufügen
+      </button>
+      <button class="btn" id="sync-btn" type="button" aria-label="Lesestand synchronisieren">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12a8 8 0 0 1 14.3-4.9"/><path d="M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2"/></svg>
+        Sync
       </button>
       <input id="file" type="file" multiple hidden>
     </div>
@@ -255,6 +288,9 @@ button { cursor: pointer; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
     </button>
     <div class="r-title" id="r-title"></div>
+    <button class="icon-btn" id="r-sync" type="button" aria-label="Lesestand synchronisieren">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12a8 8 0 0 1 14.3-4.9"/><path d="M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2"/></svg>
+    </button>
     <button class="icon-btn aa" id="r-settings" type="button" aria-label="Darstellung">Aa</button>
   </header>
   <footer class="r-bar r-bottom">
@@ -330,6 +366,25 @@ button { cursor: pointer; }
   </div>
 </section>
 
+<div class="sync-scrim" id="sync-scrim" hidden></div>
+<div class="sync-sheet" id="sync" hidden role="dialog" aria-labelledby="sync-h" aria-modal="true">
+  <h2 id="sync-h">Lesestand abgleichen <button class="x" type="button" id="sync-x" aria-label="Schließen">✕</button></h2>
+  <p>So wechselst du zwischen iPad und iPhone: Vor dem Wechsel hier <b>sichern</b>, auf dem anderen Gerät <b>laden</b>. Übernommen werden die Leseposition jedes Buches und deine Darstellung. Gewonnen hat jeweils der neuere Stand.</p>
+  <div class="sync-step">
+    <b>Auf diesem Gerät sichern</b>
+    <label class="sync-check" for="sync-books"><input type="checkbox" id="sync-books"> <span>Bücher mitspeichern, damit sie auf dem anderen Gerät automatisch dazukommen (größere Datei)</span></label>
+    <button class="btn primary" type="button" id="sync-save" disabled>Wird vorbereitet …</button>
+    <p id="sync-info"></p>
+  </div>
+  <div class="sync-step">
+    <b>Auf dem anderen Gerät laden</b>
+    <button class="btn" type="button" id="sync-load">Stand laden …</button>
+    <p>Die Datei <b>buecherfach-stand.json</b> aus iCloud Drive auswählen.</p>
+    <input id="sync-file" type="file" hidden>
+  </div>
+  <p>Tipp: Beim Sichern „In Dateien sichern“ → <b>iCloud Drive</b> wählen und die vorhandene Datei <b>ersetzen</b>. Dann liegt dort immer der aktuelle Stand.</p>
+  <div class="sync-last" id="sync-last"></div>
+</div>
 <div id="drop" class="drop-hint" hidden>Dateien hier ablegen</div>
 <div id="toast" class="toast" hidden role="status"></div>
 
@@ -736,10 +791,11 @@ async function openEpub(blob) {
 async function rewriteCss(css, cssPath, res) {
   css = css.replace(/@import[^;]+;/gi, '');
   const jobs = [];
-  css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (m, q, u) => { if (!/^(data|https?|blob):/i.test(u)) jobs.push(u); return m; });
+  css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (m, q, u) => { if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) jobs.push(u); return m; });
   const map = new Map();
   for (const u of jobs) map.set(u, await res(resolvePath(cssPath, u)));
-  css = css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (m, q, u) => (map.has(u) ? 'url("' + map.get(u) + '")' : m));
+  // eigene Dateien auf blob:-Adressen umschreiben, fremde Server (http/https) entfernen
+  css = css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (m, q, u) => (map.has(u) ? 'url("' + map.get(u) + '")' : /^(data|blob):/i.test(u) ? m : 'none'));
   // body/html-Selektoren auf den Lesebereich umlenken
   return css.replace(/(^|[\s,}>+~])(html|body)(?=[\s,{.#:\[>+~])/gi, '$1.flow');
 }
@@ -756,6 +812,9 @@ async function sanitize(root, chapterPath, res, imgResolver) {
       if (tag === 'mbp:nu' || tag.startsWith('mbp:')) { el.replaceWith(...el.childNodes); continue; }
       el.remove(); continue;
     }
+    if (el.hasAttribute('style') && /url\s*\(/i.test(el.getAttribute('style'))) {
+      el.setAttribute('style', el.getAttribute('style').replace(/url\s*\([^)]*\)/gi, 'none'));
+    }
     for (const a of [...el.attributes]) {
       const n = a.name.toLowerCase();
       if (n.startsWith('on') || (n === 'href' || n === 'src' || n.endsWith(':href')) && /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name);
@@ -765,13 +824,15 @@ async function sanitize(root, chapterPath, res, imgResolver) {
       if (rid && imgResolver) el.setAttribute('src', imgResolver(rid) || '');
       else if (el.getAttribute('src')) {
         const s = el.getAttribute('src');
-        if (!/^(data|blob|https?):/i.test(s)) el.setAttribute('src', await res(resolvePath(chapterPath, s)));
+        if (/^[a-z][a-z0-9+.-]*:/i.test(s) && !/^(data|blob):/i.test(s)) el.removeAttribute('src');   // fremde Server: nicht laden
+        else if (!/^(data|blob):/i.test(s)) el.setAttribute('src', await res(resolvePath(chapterPath, s)));
       }
       el.setAttribute('loading', 'eager');
       el.removeAttribute('srcset');
     } else if (tag === 'image') {
       const h = el.getAttribute('href') || el.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
-      if (h && !/^(data|blob):/.test(h)) {
+      if (h && /^[a-z][a-z0-9+.-]*:/i.test(h) && !/^(data|blob):/i.test(h)) { el.removeAttribute('href'); el.removeAttributeNS('http://www.w3.org/1999/xlink', 'href'); }
+      else if (h && !/^(data|blob):/.test(h)) {
         const u = await res(resolvePath(chapterPath, h));
         el.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', u); el.setAttribute('href', u);
       }
@@ -962,9 +1023,12 @@ const THEMES = [
   { id: 'dunkel', name: 'Dunkel', bg: '#1D1F1E', fg: '#D4D6D0' },
   { id: 'schwarz', name: 'Schwarz', bg: '#000000', fg: '#BDBDB8' }
 ];
-const DEFAULTS = { size: 19, font: 'literata', lh: 1.55, margin: 40, align: 'justify', para: 'indent', hyph: true, theme: 'auto', mode: 'paged', spread: true, pub: true };
+const SMALL_SCREEN = Math.min(screen.width, screen.height) < 600;
+const DEFAULTS = { size: SMALL_SCREEN ? 18 : 19, font: 'literata', lh: 1.55, margin: SMALL_SCREEN ? 16 : 40, align: SMALL_SCREEN ? 'left' : 'justify', para: 'indent', hyph: true, theme: 'auto', mode: 'paged', spread: true, pub: true };
 let S = Object.assign({}, DEFAULTS, store('bf:settings') || {});
-const saveSettings = () => store('bf:settings', S);
+const saveSettings = () => { store('bf:settings', S); store('bf:settingsTime', Date.now()); };
+// Diese Einstellungen werden zwischen Geraeten abgeglichen; Groesse, Raender, Ausrichtung und Doppelseite bleiben pro Geraet.
+const SYNCED_SETTINGS = ['font', 'lh', 'para', 'hyph', 'theme', 'mode', 'pub'];
 
 /* =========================================================================
    Bibliothek
@@ -973,6 +1037,13 @@ let books = [];
 const coverUrls = new Map();
 const sampleHidden = () => store('bf:sampleHidden') === true;
 
+// Eindeutiger Schluessel aus dem Dateiinhalt: dasselbe Buch hat auf iPad und iPhone denselben Schluessel.
+async function bookKey(buf, title, author, size) {
+  try {
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
+    return 'sha256:' + [...h.subarray(0, 16)].map(x => x.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return 'meta:' + (title + '|' + author + '|' + size).toLowerCase(); }
+}
 async function loadLibrary() {
   await DB.open();
   books = (await DB.all()).map(r => ({ ...r, file: asBlob(r.file), cover: asBlob(r.cover, r.coverType) }));
@@ -980,13 +1051,16 @@ async function loadLibrary() {
   renderNotices();
   renderLibrary();
   updateStorage();
+  for (const b of books) {   // aeltere Eintraege ohne Schluessel nachruesten
+    if (!b.key && b.file) { b.key = await bookKey(await b.file.arrayBuffer(), b.title, b.author, b.size); DB.patch(b.id, { key: b.key }); }
+  }
 }
 function renderNotices() {
   const n = $('#notices'); n.innerHTML = '';
   if (!DB.ok) {
     n.insertAdjacentHTML('beforeend', '<div class="notice warn"><span><b>Speichern nicht möglich.</b> Dieser Browser erlaubt hier keinen dauerhaften Speicher (z. B. im privaten Modus). Bücher bleiben nur geöffnet, bis die Seite geschlossen wird.</span></div>');
   } else if (!store('bf:tipClosed')) {
-    n.insertAdjacentHTML('beforeend', '<div class="notice"><span><b>Tipp fürs iPad:</b> In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen. Dann startet das Bücherfach wie eine App.</span><button class="x" type="button" aria-label="Hinweis schließen" id="tip-x">✕</button></div>');
+    n.insertAdjacentHTML('beforeend', '<div class="notice"><span><b>Tipp:</b> In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen. Dann startet das Bücherfach wie eine App und funktioniert offline. Bücher immer in dieser App hinzufügen.</span><button class="x" type="button" aria-label="Hinweis schließen" id="tip-x">✕</button></div>');
     $('#tip-x').onclick = () => { store('bf:tipClosed', true); renderNotices(); };
   }
 }
@@ -1073,6 +1147,7 @@ async function cardAction(act, id) {
   } else if (act === 'hide-sample') { store('bf:sampleHidden', true); renderLibrary(); }
 }
 document.addEventListener('click', e => { if (!e.target.closest('.card-menu') && !e.target.closest('[data-menu]')) closeMenus(); });
+$('#notices').addEventListener('click', e => { const x = e.target.closest('[data-dismiss]'); if (x) x.parentElement.remove(); });
 $('#q').addEventListener('input', renderLibrary);
 $('#sort').addEventListener('change', () => { store('bf:sort', $('#sort').value); renderLibrary(); });
 $('#sort').value = store('bf:sort') || 'opened';
@@ -1103,7 +1178,10 @@ async function importFiles(files) {
       const dup = books.find(b => b.title === title && b.size === f.size);
       book.close();
       if (dup) { errors.push('„' + title + '“ ist schon vorhanden'); continue; }
-      const rec = { id: uid(), title, author: book.author || '', format: format.toUpperCase(), name: f.name, size: f.size, added: Date.now(), opened: 0, pos: null, file: blob, cover };
+      const key = await bookKey(buf, title, book.author || '', f.size);
+      if (books.some(b => b.key === key)) { errors.push('„' + title + '“ ist schon vorhanden'); continue; }
+      const rec = { id: uid(), key, title, author: book.author || '', format: format.toUpperCase(), name: f.name, size: f.size, added: Date.now(), opened: 0, pos: null, posTime: 0, file: blob, cover };
+      applyPending(rec);
       const saved = await DB.put(rec);
       if (!saved && DB.ok) errors.push('„' + title + '“ konnte nicht dauerhaft gespeichert werden (Speicher voll?)');
       books.push(rec); ok++;
@@ -1116,7 +1194,7 @@ async function importFiles(files) {
   if (errors.length) {
     $('#toast').hidden = true;
     const n = $('#notices');
-    n.insertAdjacentHTML('afterbegin', '<div class="notice warn"><span><b>' + (ok ? ok + ' importiert, ' : '') + errors.length + ' nicht importiert:</b><br>' + errors.map(esc).join('<br>') + '</span><button class="x" type="button" aria-label="Schließen" onclick="this.parentElement.remove()">✕</button></div>');
+    n.insertAdjacentHTML('afterbegin', '<div class="notice warn"><span><b>' + (ok ? ok + ' importiert, ' : '') + errors.length + ' nicht importiert:</b><br>' + errors.map(esc).join('<br>') + '</span><button class="x" type="button" aria-label="Schließen" data-dismiss>✕</button></div>');
   } else toast(ok === 1 ? '1 Buch hinzugefügt' : ok + ' Bücher hinzugefügt');
 }
 
@@ -1368,9 +1446,13 @@ let saveT = 0;
 function savePos(now) {
   if (!R.book || !R.rec) return;
   const pos = { i: R.i, f: chapterFrac(), total: totalFrac() };
-  R.rec.pos = pos;
+  const old = R.rec.pos;
+  // Zeitstempel nur bei echter Bewegung erneuern, sonst ueberstimmt ein blosses Schliessen neuere Staende anderer Geraete
+  const moved = !old || old.i !== pos.i || Math.abs((old.f || 0) - pos.f) > 1e-4;
+  const posTime = moved ? Date.now() : (R.rec.posTime || Date.now());
+  R.rec.pos = pos; R.rec.posTime = posTime;
   clearTimeout(saveT);
-  const doSave = () => { if (R.rec.id === 'sample') store('bf:samplePos', pos); else DB.patch(R.rec.id, { pos }); };
+  const doSave = () => { if (R.rec.id === 'sample') store('bf:samplePos', pos); else DB.patch(R.rec.id, { pos, posTime }); };
   if (now) doSave(); else saveT = setTimeout(doSave, 600);
 }
 async function next() {
@@ -1529,6 +1611,143 @@ $('#hyph').onchange = () => { S.hyph = $('#hyph').checked; applySettings(); };
 $('#spread').onchange = () => { S.spread = $('#spread').checked; applySettings(false); };
 $('#pub').onchange = () => { S.pub = $('#pub').checked; applySettings(); };
 $('#reset-settings').onclick = () => { S = Object.assign({}, DEFAULTS); applySettings(); };
+
+/* =========================================================================
+   Abgleich zwischen Geraeten ueber eine Datei (z. B. in iCloud Drive)
+   ========================================================================= */
+const SYNC_NAME = 'buecherfach-stand.json';
+let syncPrepared = null, syncPrepId = 0;
+const blobToDataUrl = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+const dataUrlToBlob = async d => (await fetch(d)).blob();
+const fmtTime = t => t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '–';
+const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+function applyPending(rec) {
+  const pend = store('bf:pending') || {};
+  const p = pend[rec.key];
+  if (p && (p.posTime || 0) > (rec.posTime || 0)) { rec.pos = p.pos; rec.posTime = p.posTime; rec.opened = p.opened || p.posTime; }
+  if (p) { delete pend[rec.key]; store('bf:pending', pend); }
+}
+async function buildSyncFile(withBooks) {
+  if (!reader.hidden) savePos(true);
+  const settings = {};
+  for (const k of SYNCED_SETTINGS) settings[k] = S[k];
+  const list = [];
+  for (const b of books) {
+    if (!b.key) continue;
+    const e = { key: b.key, title: b.title, author: b.author, format: b.format, name: b.name, size: b.size, pos: b.pos || null, posTime: b.posTime || 0, opened: b.opened || 0, added: b.added || 0 };
+    if (withBooks && b.file) {
+      e.file = await blobToDataUrl(b.file);
+      if (b.cover && b.cover.size < 600000) e.cover = await blobToDataUrl(b.cover);
+    }
+    list.push(e);
+  }
+  // noch nicht vorhandene Buecher mit bekanntem Stand weiterreichen
+  const pend = store('bf:pending') || {};
+  for (const [key, p] of Object.entries(pend)) if (!list.some(x => x.key === key)) list.push({ key, title: p.title, author: p.author || '', pos: p.pos, posTime: p.posTime, opened: p.opened || 0, pendingOnly: true });
+  const data = { app: 'buecherfach', version: 1, exported: Date.now(), withBooks: !!withBooks, settings, settingsTime: store('bf:settingsTime') || 0, books: list };
+  return new File([JSON.stringify(data)], SYNC_NAME, { type: 'application/json' });
+}
+async function prepareSync() {
+  const id = ++syncPrepId;
+  const btn = $('#sync-save');
+  btn.disabled = true; btn.textContent = 'Wird vorbereitet …';
+  try {
+    const f = await buildSyncFile($('#sync-books').checked);
+    if (id !== syncPrepId) return;
+    syncPrepared = f;
+    btn.disabled = false; btn.textContent = 'In Dateien sichern';
+    const n = books.length;
+    $('#sync-info').textContent = (n === 1 ? '1 Buch' : n + ' Bücher') + ' · Datei ' + fmtSize(f.size) + ($('#sync-books').checked ? ' (mit Büchern)' : ' (nur Lesestände)');
+  } catch (e) {
+    btn.textContent = 'Fehler beim Vorbereiten'; $('#sync-info').textContent = e.message;
+  }
+}
+function openSync() {
+  $('#sync').hidden = false; $('#sync-scrim').hidden = false;
+  $('#sync-last').textContent = 'Zuletzt gesichert: ' + fmtTime(store('bf:lastExport')) + ' · zuletzt geladen: ' + fmtTime(store('bf:lastImport'));
+  prepareSync();
+  $('#sync-save').focus();
+}
+function closeSync() { $('#sync').hidden = true; $('#sync-scrim').hidden = true; }
+function downloadFile(f) {
+  const u = URL.createObjectURL(f);
+  const a = Object.assign(document.createElement('a'), { href: u, download: f.name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 10000);
+}
+$('#sync-save').addEventListener('click', () => {
+  const f = syncPrepared; if (!f) return;
+  const done = () => { store('bf:lastExport', Date.now()); closeSync(); toast('Lesestand gesichert'); };
+  // Teilen-Dialog direkt im Klick aufrufen (iOS verlangt eine frische Nutzeraktion)
+  if (navigator.canShare && navigator.canShare({ files: [f] })) {
+    navigator.share({ files: [f], title: 'Bücherfach-Lesestand' }).then(done).catch(e => { if (e.name !== 'AbortError') { downloadFile(f); done(); } });
+  } else { downloadFile(f); done(); }
+});
+$('#sync-books').addEventListener('change', prepareSync);
+$('#sync-load').addEventListener('click', () => $('#sync-file').click());
+$('#sync-file').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) await importSync(f); });
+$('#sync-x').onclick = closeSync; $('#sync-scrim').onclick = closeSync;
+$('#sync-btn').onclick = openSync;
+$('#r-sync').onclick = () => { closeSheets(); openSync(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sync').hidden) { e.stopImmediatePropagation(); closeSync(); } }, true);
+
+async function importSync(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (e) { toast('Die Datei ist keine Bücherfach-Sicherung.'); return; }
+  if (!data || data.app !== 'buecherfach' || !Array.isArray(data.books)) { toast('Die Datei ist keine Bücherfach-Sicherung.'); return; }
+  let updated = 0, added = 0; const missing = []; const errors = [];
+  const pend = store('bf:pending') || {};
+  const changedIds = new Set();
+  for (const e of data.books) {
+    if (!e || !e.key) continue;
+    let local = books.find(b => b.key === e.key) || books.find(b => b.title === e.title && (b.author || '') === (e.author || '') && b.size === e.size);
+    if (!local && e.file) {
+      try {
+        const blob = await dataUrlToBlob(e.file);
+        const rec = { id: uid(), key: e.key, title: e.title, author: e.author || '', format: e.format || 'EPUB', name: e.name || e.title, size: blob.size, added: Date.now(), opened: e.opened || 0, pos: e.pos || null, posTime: e.posTime || 0, file: blob, cover: e.cover ? await dataUrlToBlob(e.cover) : null };
+        await DB.put(rec); books.push(rec); added++;
+        continue;
+      } catch (err) { errors.push(e.title); continue; }
+    }
+    if (!local) {
+      if (e.pos && (!pend[e.key] || (pend[e.key].posTime || 0) < (e.posTime || 0))) pend[e.key] = { pos: e.pos, posTime: e.posTime || 0, opened: e.opened || 0, title: e.title, author: e.author || '' };
+      missing.push(e.title); continue;
+    }
+    if ((e.posTime || 0) > (local.posTime || 0) && e.pos) {
+      local.pos = e.pos; local.posTime = e.posTime; local.opened = Math.max(local.opened || 0, e.opened || 0, e.posTime || 0);
+      await DB.patch(local.id, { pos: local.pos, posTime: local.posTime, opened: local.opened });
+      updated++; changedIds.add(local.id);
+    }
+  }
+  store('bf:pending', pend);
+  let settingsChanged = false;
+  if (data.settings && (data.settingsTime || 0) > (store('bf:settingsTime') || 0)) {
+    for (const k of SYNCED_SETTINGS) if (k in data.settings) S[k] = data.settings[k];
+    store('bf:settings', S); store('bf:settingsTime', data.settingsTime); settingsChanged = true;
+    syncSettingsUi();
+  }
+  store('bf:lastImport', Date.now());
+  closeSync();
+  renderLibrary(); updateStorage();
+  // Wenn gerade gelesen wird und dieses Buch einen neueren Stand bekommen hat: dorthin springen
+  if (!reader.hidden && R.rec && changedIds.has(R.rec.id)) { const p = R.rec.pos; await showChapter(Math.min(p.i, R.book.spine.length - 1), { frac: p.f }); }
+  else if (!reader.hidden && settingsChanged) applySettings();
+  const parts = [];
+  if (updated || (!added && !settingsChanged)) parts.push(updated === 1 ? '1 Lesestand aktualisiert' : updated ? updated + ' Lesestände aktualisiert' : 'alles war schon aktuell');
+  if (added) parts.push(added === 1 ? '1 Buch hinzugefügt' : added + ' Bücher hinzugefügt');
+  if (settingsChanged) parts.push('Darstellung übernommen');
+  const latest = books.filter(b => b.posTime).sort((a, b) => b.posTime - a.posTime)[0];
+  let html = '<div class="notice"><span><b>Stand geladen:</b> ' + esc(parts.join(', ')) + '.';
+  if (missing.length) html += '<br>Fehlt auf diesem Gerät (Stand wird übernommen, sobald du das Buch hinzufügst): ' + missing.map(t => '„' + esc(t) + '“').join(', ') + '.';
+  if (errors.length) html += '<br>Nicht übernommen: ' + errors.map(esc).join(', ') + '.';
+  if (latest && reader.hidden) html += '<br><button class="btn primary" type="button" data-continue="' + esc(latest.id) + '">Weiterlesen: ' + esc(latest.title) + '</button>';
+  html += '</span><button class="x" type="button" aria-label="Schließen" data-dismiss>✕</button></div>';
+  $('#notices').insertAdjacentHTML('afterbegin', html);
+  if (!reader.hidden) toast(parts.join(', '));
+  window.scrollTo(0, 0);
+}
+$('#notices').addEventListener('click', e => { const c = e.target.closest('[data-continue]'); if (c) { c.closest('.notice').remove(); openReader(c.dataset.continue); } });
 
 /* ---- Start ---- */
 syncSettingsUi();
